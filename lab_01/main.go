@@ -27,7 +27,7 @@ type Server struct {
 	busyTime int64
 }
 
-func (s *Server) Process(req *Request, processed *int, statusLabel *widget.Label, waitTimeSumMilli *int64) {
+func (s *Server) Process(req *Request, processed *int, waitTimeSumMilli *int64) {
 	s.mu.Lock()
 	s.busy = true
 	busyTime := time.Duration(req.serviceTime*100) * time.Millisecond
@@ -40,12 +40,11 @@ func (s *Server) Process(req *Request, processed *int, statusLabel *widget.Label
 	s.busy = false
 	s.busyTime += busyTime.Milliseconds()
 	*processed++
-	statusLabel.SetText(fmt.Sprintf("Обработано заявок: %d", *processed))
 	s.mu.Unlock()
 }
 
 func generateRequests(rate float64, serviceRate float64, queue chan Request, id int, stopChan chan struct{}) {
-	uniformDist := distuv.Uniform{Min: rate / 2, Max: rate}
+	uniformDist := distuv.Uniform{Min: 1.0 / rate, Max: 2.0 / rate}
 	for {
 		select {
 		case <-stopChan:
@@ -121,12 +120,12 @@ func main() {
 			statusLabel.SetText("Ошибка: введите корректное значение интенсивности обслуживания заявок 1 генератора.")
 			return
 		}
-		_, err = fmt.Sscanf(rateEntry1.Text, "%f", &rate2)
+		_, err = fmt.Sscanf(rateEntry2.Text, "%f", &rate2)
 		if err != nil {
 			statusLabel.SetText("Ошибка: введите корректное значение интенсивности поступления заявок 2 генератора.")
 			return
 		}
-		_, err = fmt.Sscanf(serviceRateEntry1.Text, "%f", &serviceRate2)
+		_, err = fmt.Sscanf(serviceRateEntry2.Text, "%f", &serviceRate2)
 		if err != nil {
 			statusLabel.SetText("Ошибка: введите корректное значение интенсивности обслуживания заявок 2 генератора.")
 			return
@@ -140,8 +139,8 @@ func main() {
 
 		statusLabel.SetText("Моделирование запущено")
 
-		queue1 := make(chan Request, 100)
-		queue2 := make(chan Request, 100)
+		queue1 := make(chan Request, 10000)
+		queue2 := make(chan Request, 10000)
 		server := Server{}
 		stopChan := make(chan struct{})
 		processed := 0
@@ -162,11 +161,11 @@ func main() {
 				case req := <-queue1:
 					for server.busy {
 					}
-					go server.Process(&req, &processed, statusLabel, &waitTimeSum1Milli)
+					go server.Process(&req, &processed, &waitTimeSum1Milli)
 				case req := <-queue2:
 					for server.busy {
 					}
-					go server.Process(&req, &processed, statusLabel, &waitTimeSum2Milli)
+					go server.Process(&req, &processed, &waitTimeSum2Milli)
 				}
 			}
 		}()
@@ -183,7 +182,7 @@ func main() {
 				avgWait2 := float64(waitTimeSum2Milli) / float64(processed)
 				avgWaitLabel.SetText(fmt.Sprintf("Среднее время ожидания 1-й очереди: %.2fмс, 2-й очереди: %.2fмс", avgWait1, avgWait2))
 
-				statusLabel.SetText("Моделирование завершено. " + fmt.Sprintf("Обработано %d заявок", processed))
+				statusLabel.SetText("Моделирование завершено. " + fmt.Sprintf("Обработано %d заявок", requestsCount))
 				break
 			}
 		}
